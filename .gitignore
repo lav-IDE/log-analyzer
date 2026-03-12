@@ -2,3 +2,9 @@
 # Hadoop Installation (ignore entire distribution)
 # -----------------------
 hadoop-project/hadoop/
+
+#env
+spark/myenv/
+
+#readme
+spark/README.md
