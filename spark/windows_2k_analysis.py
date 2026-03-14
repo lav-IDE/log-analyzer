@@ -38,7 +38,22 @@ windows_df = spark.read \
         .option("header", "True") \
         .option("inferSchema", "True") \
         .csv(hdfs_logs)
-        
-        
-windows_df.printSchema()
-windows_df.show(10, truncate=False)
+
+windows_df.createOrReplaceTempView("windows_logs")
+
+summary_df = spark.sql('''
+    SELECT Component, COUNT(*) as Total_Logs
+    FROM windows_logs
+    GROUP BY Component
+    ORDER BY Total_Logs DESC              
+                       ''')
+
+    
+
+output_path = "file:///mnt/d/programs/projects/log_analyzer/data/processed_data/component_summary.parquet"
+
+summary_df.write \
+    .mode("overwrite") \
+    .parquet(output_path)
+    
+print(f"data summarized and bridged to {output_path}")
