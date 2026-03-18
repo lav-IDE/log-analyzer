@@ -41,19 +41,30 @@ windows_df = spark.read \
 
 windows_df.createOrReplaceTempView("windows_logs")
 
-summary_df = spark.sql('''
+work_dir = os.getcwd()
+
+def export_query(query_sql, export_name):
+    """runs a Spark SQL query and saves it directly to the local data folder."""
+    print(f"running query: {export_name}...")
+    result_df = spark.sql(query_sql)
+    
+    folder_path = os.path.join(work_dir, "data", "processed_data", f"{export_name}.parquet")
+    output_path = f"file://{folder_path}"
+    result_df.write.mode("overwrite").parquet(output_path)
+    print(f"Successfully bridged: {export_name}.parquet\n")
+
+# query 1: The Component Summary
+export_query("""
     SELECT Component, COUNT(*) as Total_Logs
     FROM windows_logs
     GROUP BY Component
-    ORDER BY Total_Logs DESC              
-                       ''')
+    ORDER BY Total_Logs DESC
+""", "1_component_volume")
 
-    
-
-output_path = "file:///mnt/d/programs/projects/log_analyzer/data/processed_data/component_summary.parquet"
-
-summary_df.write \
-    .mode("overwrite") \
-    .parquet(output_path)
-    
-print(f"data summarized and bridged to {output_path}")
+# query 2: The Level Summary (Info vs Warning vs Error)
+export_query("""
+    SELECT Level, COUNT(*) as Total_Logs
+    FROM windows_logs
+    GROUP BY Level
+    ORDER BY Total_Logs DESC
+""", "2_severity_levels")
