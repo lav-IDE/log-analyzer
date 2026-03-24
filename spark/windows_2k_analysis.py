@@ -68,3 +68,12 @@ export_query("""
     GROUP BY Level
     ORDER BY Total_Logs DESC
 """, "2_severity_levels")
+
+# query 3: Top 10 most frequent actions the server takes
+export_query("""
+    SELECT EventTemplate, COUNT(*) as Actions
+    FROM windows_logs
+    GROUP BY EventTemplate
+    ORDER BY Actions DESC
+    LIMIT 10
+""", "3_most_frequent_actions")
