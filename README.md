@@ -1,86 +1,129 @@
-# Log Analyzer v1
+# Log Analyzer
 
-A distributed log analysis system using Apache Spark and Hadoop to analyze server logs, identify errors, detect memory leaks
+A distributed log analysis system built with **Apache Spark** and **Apache Hadoop** to process large-scale Windows system logs — detecting errors, identifying anomalies, and visualizing system health through an interactive dashboard.
+
+---
+
+## What This Does
+
+System logs contain critical signals about software health — but at scale, manually reviewing them is impossible. This project builds a distributed pipeline that:
+
+- Ingests and processes real **Windows CBS (Component Based Servicing)** logs using **HDFS + Hadoop**
+- Runs distributed analysis using **Apache Spark** for high-throughput processing
+- Detects anomalous log patterns and error clusters
+- Visualizes results through a **Streamlit dashboard**
+
+---
+
+## Dataset
+
+This project uses the **Windows log dataset** from [logpai/loghub](https://github.com/logpai/loghub) — a benchmark log collection used by organizations including IBM, Microsoft, Huawei, and Nvidia for log analytics research.
+
+- **Source:** Real Windows 7 CBS (Component Based Servicing) logs from `C:\Windows\Logs\CBS`
+- **Full dataset size:** 27+ GB, spanning 226+ days of system activity
+- **Development sample:** `Windows_2k.log` — 2,000 structured log entries used for pipeline development and testing
+- **Log format:** `Date Time Level Component Content`
+
+The `Windows_2k` sample is the standard subset from loghub used to develop and validate pipelines before scaling to the full dataset.
+
+---
 
 ## Project Structure
 
 ```
 log_analyzer/
-├── log_generator/        # Log file generator
-│   └── log_generator.py  # Generate sample server logs
-├── spark/                # Spark analysis module
-│   └── analysis.py       # Analyze logs using Spark
-├── dashboard/            # Web dashboard for visualization
-├── data/                 # Data storage
-│   └── raw_logs/         # Raw log files
-├── hadoop-project/       # Hadoop distribution
-└── scripts/              # Utility scripts
+├── log_generator/        # Synthetic log generator (for pipeline testing)
+│   └── log_generator.py
+├── spark/                # Spark analysis pipeline
+│   └── analysis.py
+├── dashboard/            # Streamlit visualization dashboard
+│   └── app.py
+├── data/
+│   └── raw_logs/         # Windows_2k.log and generated logs
+├── hadoop-project/       # Hadoop configuration
+├── scripts/              # Utility scripts
+├── requirements.txt
+└── README.md
 ```
 
-## Features
+---
 
-- **Log Generation**: Generate realistic server logs with configurable parameters
-- **Distributed Analysis**: Process logs at scale using Apache Spark and Hadoop
-- **Error Tracking**: Identify and count ERROR level events by server
-- **Memory Leak Detection**: Detect servers with memory usage exceeding average
+## Pipeline Overview
 
-## Requirements
-
-- Python 3.7+
-- Apache Spark 2.4+
-- Apache Hadoop (included in hadoop-project/)
-- YARN cluster (for distributed execution)
-
-## Installation
-
-1. Clone the repository
-2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-## Usage
-
-### Generate Sample Logs
-
-```bash
-python log_generator/log_generator.py
-```
-
-This generates 5 sample log files with 250,000 entries each in `data/raw_logs/generated_logs/`.
+### 1. Log Ingestion
+Windows CBS logs are loaded into HDFS for distributed processing. The `Windows_2k.log` sample is used during development.
 
 Log format:
 ```
-timestamp | server | level | Response Time = Xms | CPU=X% | Memory=X.XGB | Requests=X
+Date       Time     Level   Component   Content
+2016-09-28 04:30:30 Info    CBS         Starting TrustedInstaller initialization.
+2016-09-28 04:30:30 Warning CBS         Failed to load package...
 ```
 
-### Run Log Analysis
-
-Navigate to the spark folder and configure your environment:
-
+### 2. Distributed Analysis (Spark + Hadoop)
 ```bash
 cd spark/
 python analysis.py
 ```
 
-The analysis script will:
-1. Read logs from HDFS
-2. Parse and structure log data
-3. Perform error analysis by server
-4. Detect potential memory leaks
+The Spark pipeline:
+- Reads logs from HDFS
+- Parses timestamps, log levels, and component fields
+- Aggregates error/warning counts over time
+- Flags anomalous event bursts and irregular patterns
 
-### View the Dashboard
-
+### 3. Dashboard
 ```bash
-# From the dashboard folder
+cd dashboard/
 python app.py
 ```
+Interactive Streamlit dashboard for exploring parsed log results.
 
-## Configuration
+---
 
-See individual module READMEs for configuration options:
-- [Spark Analysis Configuration](spark/README.md)
+## Tech Stack
 
-## License
+| Tool | Purpose |
+|------|---------|
+| Apache Spark | Distributed log processing |
+| Apache Hadoop / HDFS | Distributed file storage |
+| PySpark | Spark Python API |
+| Streamlit | Interactive dashboard |
+| Python | Core scripting |
 
-MIT
+---
+
+## Installation
+
+```bash
+git clone https://github.com/lav-IDE/log-analyzer.git
+cd log-analyzer
+pip install -r requirements.txt
+```
+
+Requirements: Python 3.7+, Apache Spark 2.4+, Apache Hadoop (config in `hadoop-project/`)
+
+To use the full 27GB Windows dataset, download it from [logpai/loghub](https://github.com/logpai/loghub) and place it in `data/raw_logs/`.
+
+---
+
+## Roadmap — v2
+
+- [ ] **ML-based anomaly detection** using Isolation Forest on log frequency and error-burst features
+- [ ] **Log parsing** with Drain or similar template-extraction algorithms (standard in loghub benchmarks)
+- [ ] **Full 27GB dataset** processing on a multi-node Hadoop cluster
+
+---
+
+## Dataset Citation
+
+If you use the Windows log dataset, please cite:
+
+> Jieming Zhu, Shilin He, Pinjia He, Jinyang Liu, Michael R. Lyu. *Loghub: A Large Collection of System Log Datasets for AI-driven Log Analytics.* IEEE ISSRE, 2023. https://github.com/logpai/loghub
+
+---
+
+## Author
+
+**Lavanya Dharmadhikari**
+[LinkedIn](https://linkedin.com/in/lav465) · [GitHub](https://github.com/lav-IDE)
