@@ -48,6 +48,29 @@ The script outputs:
 - **Error count by Server**: Count of ERROR level logs per server
 - **Memory Leak Analysis**: Servers with memory usage exceeding the average
 
+
+## Analysis v2
+
+```bash
+python spark/windows_2k_analysis.py
+streamlit run dashboard/app.py
+```
+
+The scripts will:
+1. Read logs from the specified HDFS path
+2. Run Spark SQL queries on the data
+3. Convert the output into .parquet files
+4. Show a streamlit dashboard of the analysis of 2000 Windows Log Records
+
+
+## Output
+
+The script outputs:
+- **The Component Summary**: Count of CBS/CSI Components
+- **The Level Summary**: Count of the levels (INFO/WARN/ERROR)
+- **Server Actions**: Top 10 most frequent actions the server takes
+
+
 ## Notes
 
 - Ensure HADOOP_CONF_DIR is correctly set for Hadoop to function properly

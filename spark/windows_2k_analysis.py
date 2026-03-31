@@ -43,15 +43,21 @@ windows_df.createOrReplaceTempView("windows_logs")
 
 work_dir = os.getcwd()
 
-def export_query(query_sql, export_name):
-    """runs a Spark SQL query and saves it directly to the local data folder."""
+
+def export_query(query_sql_or_df, export_name):
+    """Runs a Spark SQL query or accepts a DataFrame and saves it to the local data folder."""
     print(f"running query: {export_name}...")
-    result_df = spark.sql(query_sql)
     
+    if isinstance(query_sql_or_df, str):
+        result_df = spark.sql(query_sql_or_df)
+    else:
+        result_df = query_sql_or_df
+
     folder_path = os.path.join(work_dir, "data", "processed_data", f"{export_name}.parquet")
     output_path = f"file://{folder_path}"
     result_df.write.mode("overwrite").parquet(output_path)
     print(f"Successfully bridged: {export_name}.parquet\n")
+
 
 # query 1: The Component Summary
 export_query("""
@@ -77,3 +83,30 @@ export_query("""
     ORDER BY Actions DESC
     LIMIT 10
 """, "3_most_frequent_actions")
+
+
+# query 4: Hourly time window features for anomaly detection
+# query 4: Hourly time window features for anomaly detection
+anomaly_df = windows_df \
+    .withColumn("Timestamp", F.to_timestamp(
+        F.concat_ws(" ",
+            F.col("Date").cast("string"),
+            F.date_format(F.col("Time"), "HH:mm:ss")
+        ),
+        "yyyy-MM-dd HH:mm:ss"
+    )) \
+    .withColumn("Hour_Window", F.date_trunc("hour", F.col("Timestamp"))) \
+    .groupBy("Hour_Window") \
+    .agg(
+        F.count("*").alias("Total_Logs"),
+        F.count(F.when(F.col("Component") == "CBS", 1)).alias("CBS_Count"),
+        F.count(F.when(F.col("Component") == "CSI", 1)).alias("CSI_Count"),
+        F.countDistinct("EventTemplate").alias("Unique_Templates"),
+        F.countDistinct("Component").alias("Active_Components"),
+        F.round(
+            F.count(F.when(F.col("Component") == "CSI", 1)).cast("double") / F.count("*"), 4
+        ).alias("CSI_Ratio")
+    ) \
+    .orderBy("Hour_Window")
+
+export_query(anomaly_df, "4_anomaly_features")
