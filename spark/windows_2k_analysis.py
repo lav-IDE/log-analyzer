@@ -1,6 +1,8 @@
 from pyspark.sql import SparkSession
 import pyspark
 import os
+import shutil
+import subprocess
 import pyspark.sql.functions as F
 
 
@@ -10,10 +12,13 @@ def get_config(key, default):
 
 # Configuration from environment variables
 SPARK_LOCAL_IP = get_config("SPARK_LOCAL_IP", "127.0.0.1")
-HADOOP_CONF_DIR = get_config("HADOOP_CONF_DIR", "hadoop")
-HDFS_NAMENODE = get_config("HDFS_NAMENODE", "hdfs://127.0.0.1:9000")
-LOG_INPUT_PATH = get_config("LOG_INPUT_PATH", "/loghub_windows2k_data/Windows_2k.log_structured.csv")
-SPARK_JARS_PATH = get_config("SPARK_JARS_PATH", "/spark-jars/spark-jars.zip")
+HADOOP_CONF_DIR = get_config("HADOOP_CONF_DIR", "/opt/hadoop/etc/hadoop")
+HDFS_NAMENODE = get_config("HDFS_NAMENODE", "hdfs://master:9000")
+LOG_INPUT_PATH = get_config("LOG_INPUT_PATH", "/logs/windows/Windows.log")
+MAX_INPUT_ROWS = int(get_config("MAX_INPUT_ROWS", "0"))
+HDFS_OUTPUT_BASE = get_config("HDFS_OUTPUT_BASE", "/processed_data")
+LOCAL_OUTPUT_BASE = get_config("LOCAL_OUTPUT_BASE", "/output" if os.path.isdir("/output") else os.path.join(os.getcwd(), "data", "processed_data"))
+SPARK_JARS_PATH = get_config("SPARK_JARS_PATH", "").strip()
 
 # Set required environment variables
 os.environ["SPARK_LOCAL_IP"] = SPARK_LOCAL_IP
@@ -21,42 +26,84 @@ os.environ["SPARK_HOME"] = os.path.dirname(pyspark.__file__)
 os.environ["HADOOP_CONF_DIR"] = HADOOP_CONF_DIR
 
 # Build the full HDFS paths
-hdfs_spark_jars = f"{HDFS_NAMENODE}{SPARK_JARS_PATH}"
 hdfs_logs = f"{HDFS_NAMENODE}{LOG_INPUT_PATH}"
 
 # Initialize Spark Session
-spark = SparkSession \
+spark_builder = SparkSession \
     .builder \
     .appName("Log Analysis") \
     .config("spark.master", "yarn") \
-    .config("spark.submit.deployMode", "client") \
-    .config("spark.yarn.archive", hdfs_spark_jars) \
-    .getOrCreate()
-    
+    .config("spark.submit.deployMode", "client")
 
-windows_df = spark.read \
-        .option("header", "True") \
-        .option("inferSchema", "True") \
-        .csv(hdfs_logs)
+if SPARK_JARS_PATH:
+    spark_builder = spark_builder.config("spark.yarn.archive", f"{HDFS_NAMENODE}{SPARK_JARS_PATH}")
 
-windows_df.createOrReplaceTempView("windows_logs")
+spark = spark_builder.getOrCreate()
 
-work_dir = os.getcwd()
+# Read as raw text and parse with regex
+raw_df = spark.read.text(hdfs_logs)
+if MAX_INPUT_ROWS > 0:
+    raw_df = raw_df.limit(MAX_INPUT_ROWS)
 
+# Pattern: Date, Time, Level, Component, Content
+# Example: "2016-09-28 04:30:31, Info                  CBS    SQM: ..."
+parsed_df = raw_df.select(
+    F.regexp_extract('value', r'^(\d{4}-\d{2}-\d{2})', 1).alias('Date'),
+    F.regexp_extract('value', r'^\d{4}-\d{2}-\d{2} (\d{2}:\d{2}:\d{2})', 1).alias('Time'),
+    F.regexp_extract('value', r',\s*(Info|Warning|Error|Debug|Critical|Verbose)', 1).alias('Level'),
+    F.regexp_extract('value', r'(CBS|CSI)', 1).alias('Component'),
+    F.regexp_extract('value', r'(?:CBS|CSI)\s+(.*)', 1).alias('Content')
+).filter(F.col('Date') != '')
+
+# Build a lightweight template column by normalizing IDs, numbers and hex-like values.
+parsed_df = parsed_df.withColumn(
+    "EventTemplate",
+    F.trim(
+        F.regexp_replace(
+            F.regexp_replace(
+                F.regexp_replace(F.col("Content"), r"0x[0-9A-Fa-f]+", "<HEX>"),
+                r"\b\d+\b",
+                "<NUM>"
+            ),
+            r"@[0-9A-Fa-f]{6,}",
+            "@<ID>"
+        )
+    )
+)
+
+parsed_df.createOrReplaceTempView("windows_logs")
+
+
+import time
 
 def export_query(query_sql_or_df, export_name):
     """Runs a Spark SQL query or accepts a DataFrame and saves it to the local data folder."""
     print(f"running query: {export_name}...")
-    
+    start = time.time()
+
     if isinstance(query_sql_or_df, str):
         result_df = spark.sql(query_sql_or_df)
     else:
         result_df = query_sql_or_df
 
-    folder_path = os.path.join(work_dir, "data", "processed_data", f"{export_name}.parquet")
-    output_path = f"file://{folder_path}"
-    result_df.write.mode("overwrite").parquet(output_path)
-    print(f"Successfully bridged: {export_name}.parquet\n")
+    if not result_df.columns:
+        raise ValueError(f"{export_name} produced no columns; check parser and query logic")
+
+    hdfs_folder = f"{HDFS_NAMENODE}{HDFS_OUTPUT_BASE}/{export_name}.parquet"
+    result_df.write.mode("overwrite").parquet(hdfs_folder)
+
+    os.makedirs(LOCAL_OUTPUT_BASE, exist_ok=True)
+    local_folder = os.path.join(LOCAL_OUTPUT_BASE, f"{export_name}.parquet")
+    if os.path.exists(local_folder):
+        shutil.rmtree(local_folder)
+
+    subprocess.run(
+        ["hdfs", "dfs", "-get", "-f", f"{HDFS_OUTPUT_BASE}/{export_name}.parquet", LOCAL_OUTPUT_BASE],
+        check=True,
+    )
+
+    elapsed = time.time() - start
+    print(f"Successfully bridged: {export_name}.parquet — ⏱ {elapsed:.2f}s\n")
 
 
 # query 1: The Component Summary
@@ -87,15 +134,10 @@ export_query("""
 
 # query 4: Hourly time window features for anomaly detection
 # query 4: Hourly time window features for anomaly detection
-anomaly_df = windows_df \
-    .withColumn("Timestamp", F.to_timestamp(
-        F.concat_ws(" ",
-            F.col("Date").cast("string"),
-            F.date_format(F.col("Time"), "HH:mm:ss")
-        ),
-        "yyyy-MM-dd HH:mm:ss"
-    )) \
+anomaly_df = parsed_df \
+    .withColumn("Timestamp", F.to_timestamp(F.concat_ws(" ", F.col("Date"), F.col("Time")), "yyyy-MM-dd HH:mm:ss")) \
     .withColumn("Hour_Window", F.date_trunc("hour", F.col("Timestamp"))) \
+    .filter(F.col("Timestamp").isNotNull()) \
     .groupBy("Hour_Window") \
     .agg(
         F.count("*").alias("Total_Logs"),
@@ -110,3 +152,9 @@ anomaly_df = windows_df \
     .orderBy("Hour_Window")
 
 export_query(anomaly_df, "4_anomaly_features")
+
+
+
+print(f"\n{'='*50}")
+print(f"Executors: {get_config('SPARK_NUM_EXECUTORS', '2')}")
+print(f"{'='*50}")

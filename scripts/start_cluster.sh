@@ -1,16 +1,16 @@
 #!/bin/bash
 
-echo "Starting Hadoop cluster..."
+set -e
 
-# Start HDFS
-start-dfs.sh
+COMPOSE_FILE="hadoop-project/docker-compose.yml"
 
-# Start YARN
-start-yarn.sh
+echo "Starting 3-node Hadoop cluster with Docker Compose..."
+
+docker compose -f "$COMPOSE_FILE" up -d --build
 
 echo ""
-echo "Cluster status:"
-jps
+echo "Cluster containers:"
+docker compose -f "$COMPOSE_FILE" ps
 
 echo ""
 echo "HDFS UI: http://localhost:9870"

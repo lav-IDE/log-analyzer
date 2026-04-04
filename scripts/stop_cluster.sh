@@ -1,13 +1,11 @@
 #!/bin/bash
 
-echo "Stopping Hadoop cluster..."
+set -e
 
-# Stop YARN
-stop-yarn.sh
+COMPOSE_FILE="hadoop-project/docker-compose.yml"
 
-# Stop HDFS
-stop-dfs.sh
+echo "Stopping Docker Hadoop cluster..."
 
-echo ""
-echo "Cluster status:"
-jps
+docker compose -f "$COMPOSE_FILE" down
+
+echo "Cluster stopped."

@@ -3,14 +3,15 @@
 Configuration:
     - SPARK_LOCAL_IP: IP address for Spark (default: 127.0.0.1)
     - SPARK_HOME: Path to Spark installation (auto-detected)
-    - HADOOP_CONF_DIR: Path to Hadoop configuration directory
-    - HDFS_NAMENODE: HDFS namenode address (default: hdfs://127.0.0.1:9000)
+    - HADOOP_CONF_DIR: Path to Hadoop configuration directory (default: /opt/hadoop/etc/hadoop)
+    - HDFS_NAMENODE: HDFS namenode address (default: hdfs://master:9000)
     - LOG_INPUT_PATH: HDFS path to input logs (default: /raw_logs/generated_logs)
+    - SPARK_JARS_PATH: Optional HDFS archive path used for spark.yarn.archive
 
 Set these environment variables before running:
-    export HADOOP_CONF_DIR=/path/to/hadoop/etc/hadoop
-    export HDFS_NAMENODE=hdfs://namenode:9000
-    export LOG_INPUT_PATH=/path/to/logs
+    export HADOOP_CONF_DIR=/opt/hadoop/etc/hadoop
+    export HDFS_NAMENODE=hdfs://master:9000
+    export LOG_INPUT_PATH=/raw_logs/generated_logs
 """
 
 from pyspark.sql import SparkSession
@@ -25,10 +26,10 @@ def get_config(key, default):
 
 # Configuration from environment variables
 SPARK_LOCAL_IP = get_config("SPARK_LOCAL_IP", "127.0.0.1")
-HADOOP_CONF_DIR = get_config("HADOOP_CONF_DIR", "hadoop")
-HDFS_NAMENODE = get_config("HDFS_NAMENODE", "hdfs://127.0.0.1:9000")
+HADOOP_CONF_DIR = get_config("HADOOP_CONF_DIR", "/opt/hadoop/etc/hadoop")
+HDFS_NAMENODE = get_config("HDFS_NAMENODE", "hdfs://master:9000")
 LOG_INPUT_PATH = get_config("LOG_INPUT_PATH", "/raw_logs/generated_logs")
-SPARK_JARS_PATH = get_config("SPARK_JARS_PATH", "/spark-jars/spark-jars.zip")
+SPARK_JARS_PATH = get_config("SPARK_JARS_PATH", "").strip()
 
 # Set required environment variables
 os.environ["SPARK_LOCAL_IP"] = SPARK_LOCAL_IP
@@ -36,17 +37,19 @@ os.environ["SPARK_HOME"] = os.path.dirname(pyspark.__file__)
 os.environ["HADOOP_CONF_DIR"] = HADOOP_CONF_DIR
 
 # Build the full HDFS paths
-hdfs_spark_jars = f"{HDFS_NAMENODE}{SPARK_JARS_PATH}"
 hdfs_logs = f"{HDFS_NAMENODE}{LOG_INPUT_PATH}"
 
 # Initialize Spark Session
-spark = SparkSession \
+spark_builder = SparkSession \
     .builder \
     .appName("Log Analysis") \
     .config("spark.master", "yarn") \
-    .config("spark.submit.deployMode", "client") \
-    .config("spark.yarn.archive", hdfs_spark_jars) \
-    .getOrCreate()
+    .config("spark.submit.deployMode", "client")
+
+if SPARK_JARS_PATH:
+    spark_builder = spark_builder.config("spark.yarn.archive", f"{HDFS_NAMENODE}{SPARK_JARS_PATH}")
+
+spark = spark_builder.getOrCreate()
 
 
 logs = spark.read.text(hdfs_logs)

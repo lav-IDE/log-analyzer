@@ -40,8 +40,13 @@ log_analyzer/
 │   └── app.py
 ├── data/
 │   └── raw_logs/         # Windows_2k.log and generated logs
-├── hadoop-project/       # Hadoop configuration
-├── scripts/              # Utility scripts
+├── hadoop-project/       # Dockerized Hadoop+Spark cluster definitions
+│   ├── docker-compose.yml
+│   ├── dockerfile
+│   ├── entrypoint.sh
+│   ├── hadoop.env.example
+│   └── hadoop/etc/hadoop/# Hadoop XML configs used by containers
+├── scripts/              # Utility scripts (start/stop/upload for Docker cluster)
 ├── requirements.txt
 └── README.md
 ```
@@ -60,10 +65,22 @@ Date       Time     Level   Component   Content
 2016-09-28 04:30:30 Warning CBS         Failed to load package...
 ```
 
-### 2. Distributed Analysis (Spark + Hadoop)
+### 2. Start 3-Node Docker Cluster
 ```bash
-cd spark/
-python analysis.py
+cp hadoop-project/hadoop.env.example hadoop-project/hadoop.env
+bash scripts/start_cluster.sh
+bash scripts/upload_logs.sh
+```
+
+This launches:
+- `master` (NameNode + ResourceManager)
+- `worker1` (DataNode + NodeManager)
+- `worker2` (DataNode + NodeManager)
+
+### 3. Distributed Analysis (Spark + Hadoop)
+```bash
+cp spark/.env.example spark/.env
+python spark/analysis.py
 ```
 
 The Spark pipeline:
@@ -72,10 +89,9 @@ The Spark pipeline:
 - Aggregates error/warning counts over time
 - Flags anomalous event bursts and irregular patterns
 
-### 3. Dashboard
+### 4. Dashboard
 ```bash
-cd dashboard/
-python app.py
+streamlit run dashboard/app.py
 ```
 Interactive Streamlit dashboard for exploring parsed log results.
 
@@ -101,9 +117,14 @@ cd log-analyzer
 pip install -r requirements.txt
 ```
 
-Requirements: Python 3.7+, Apache Spark 2.4+, Apache Hadoop (config in `hadoop-project/`)
+Requirements: Docker + Docker Compose, and Python 3.7+ for local scripts/dashboard.
 
 To use the full 27GB Windows dataset, download it from [logpai/loghub](https://github.com/logpai/loghub) and place it in `data/raw_logs/`.
+
+Stop the cluster when done:
+```bash
+bash scripts/stop_cluster.sh
+```
 
 ---
 

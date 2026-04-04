@@ -2,10 +2,24 @@
 # Hadoop Installation (ignore entire distribution)
 # -----------------------
 hadoop-project/hadoop/
+hadoop-project/spark/
 
-#env
+# Python environments
 spark/myenv/
+myenv/
+hadoop-project/pypackages/
 
-myenv
+# Local env files
+spark/.env
+hadoop-project/hadoop.env
 
+# Generated/large data artifacts
+data/raw_logs/generated_logs/
+data/raw_logs/*.tar.gz
+data/processed_data/
+data/raw_logs/complete_dataset
 
+# Python bytecode cache
+__pycache__/
+*.pyc
+*.pyo
