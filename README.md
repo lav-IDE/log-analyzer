@@ -191,6 +191,10 @@ bash scripts/stop_cluster.sh
 
 ---
 
+## Working Demo 
+
+[Youtube link to the video](https://youtu.be/P4EOdzsXTh8)
+
 ## Dataset Citation
 
 If you use the Windows log dataset, please cite:
